@@ -1,0 +1,62 @@
+{
+  "RealisticVehicleRadio": {
+    "Main": {
+      "VehiclesSearchDistance": 50.0,
+      "MaxProcessVehicles": 30,
+      "RadioDisableDepth": 10.0,
+      "DisableRadioInTunnels": true,
+      "DisableRadioInWater": true,
+      "OpenMenuKey": "F3"
+    },
+    "Loudness": {
+      "EnableRoofCheck": true,
+      "EnableWindowCheck": true,
+      "EnableDoorCheck": true,
+      "EnableRandomChance": true,
+      "RandomLoudRadioChancePercentage": 50
+    },
+    "TunnelDetection": {
+      "TunnelHorizontalTolerance": 0.2,
+      "TunnelVerticalTolerance": 0.5
+    },
+    "Exclusions": {
+      "DisableRadioForMotorcycles": true,
+      "DisableRadioForPlanes": true,
+      "DisableRadioForAircraft": true,
+      "DisableRadioForQuadBikes": true,
+      "DisableRadioForHelicopters": true,
+      "DisableRadioForTrains": true,
+      "DisableRadioForSubmarines": true,
+      "DisableRadioForSubmarineCars": true,
+      "DisableRadioForRegularQuadBikes": true,
+      "DisableRadioForMilitaryVehicles": true,
+      "VehiclesWithNoRadio": [
+        "OpenWheel1",
+        "OpenWheel2",
+        "Formula",
+        "Formula2"
+      ]
+    },
+    "Thunderstorm": {
+      "EnableThunderstormInterference": true,
+      "InitialInterferenceDelayMin": 5.0,
+      "InitialInterferenceDelayMax": 15.0,
+      "InterferenceDurationMin": 0.5,
+      "InterferenceDurationMax": 2.5,
+      "NextInterferenceDelayMin": 10.0,
+      "NextInterferenceDelayMax": 30.0
+    }
+  },
+  "TunnelDebugVisualizer": {
+    "DebugToggleKey": "F6",
+    "MaxDrawDistance": 150.0
+  },
+  "TunnelRecorder": {
+    "RecordToggleKey": "F7",
+    "MinDistanceMeters": 1.0,
+    "HeadingDeltaThresholdDeg": 5.0,
+    "MaxHorizontalSearch": 30.0,
+    "MaxVerticalSearch": 30.0,
+    "WallRayHeightOffset": 0.5
+  }
+}

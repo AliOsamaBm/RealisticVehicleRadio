@@ -1,0 +1,38 @@
+# ===========================================
+# .gitignore for RealisticVehicleRadio
+# ===========================================
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build output
+bin/
+obj/
+[Bb]uild/
+[Ll]og/
+
+# .NET
+*.pdb
+*.cache
+*.tlog
+*.log
+
+# NuGet
+packages/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# GTA V runtime (do NOT commit game files)
+*.asi
+scripts/*.dll
+scripts/*.json
+
+# Temporary
+*.tmp
+*.bak
