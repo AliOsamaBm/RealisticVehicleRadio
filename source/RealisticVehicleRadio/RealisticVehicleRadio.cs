@@ -72,8 +72,6 @@ public sealed class RealisticVehicleRadio : Script
         Interfering
     }
 
-    private const int WEATHER_THUNDER_HASH = -1233681761;
-
     private ThunderInterferenceState _thunderState = ThunderInterferenceState.Inactive;
     private bool _thunderInterferenceActive = false;
     private int _nextThunderTransitionTime = 0;
@@ -83,8 +81,7 @@ public sealed class RealisticVehicleRadio : Script
     {
         public VehicleRoofState PrevRoofState;
         public bool PrevAnyWindowBroken;
-        public int PrevOpenMask;
-        public int PrevBrokenMask;
+        public bool PrevAnyDoorBroken;
 
         // decision cache
         public bool RandomChecked;
@@ -394,41 +391,24 @@ public sealed class RealisticVehicleRadio : Script
                         currentRoof = vehicle.RoofState;
                     }
 
-                    VehicleDoor[] doors = Array.Empty<VehicleDoor>();
-                    if (doorEnabled || windowEnabled)
-                    {
-                        doors = vehicle.Doors.ToArray();
-                    }
-
-                    // windows: check up to 4 windows (0..3)
                     bool currentAnyWindowBroken = false;
-                    if (windowEnabled)
+                    if (windowEnabled && !vehicle.Windows.AllWindowsIntact)
                     {
-                        for (int w = 0; w < doors.Length; w++)
-                        {
-                            if (!Function.Call<bool>(Hash.IS_VEHICLE_WINDOW_INTACT, vehicle, w))
-                            {
-                                currentAnyWindowBroken = true;
-                            }
-                        }
+                        currentAnyWindowBroken = true;
                     }
 
-                    // doors: create masks for open and broken states
-                    int currentOpenMask = 0;
-                    int currentBrokenMask = 0;
+                    bool currentDoorBroken = false;
                     if (doorEnabled)
                     {
-                        for (int d = 0; d < doors.Length && d < 20; d++)
+                        VehicleDoor[] doors = vehicle.Doors.ToArray();
+
+                        for (int d = 0; d < doors.Length; d++)
                         {
                             VehicleDoor vd = doors[d];
-                            if (vd.IsOpen || vd.IsFullyOpen)
+                            if (vd.IsOpen || vd.IsFullyOpen || vd.IsBroken)
                             {
-                                currentOpenMask |= (1 << d);
-                            }
-
-                            if (vd.IsBroken)
-                            {
-                                currentBrokenMask |= (1 << d);
+                                currentDoorBroken = true;
+                                break;
                             }
                         }
                     }
@@ -440,8 +420,7 @@ public sealed class RealisticVehicleRadio : Script
                         {
                             PrevRoofState = currentRoof,
                             PrevAnyWindowBroken = currentAnyWindowBroken,
-                            PrevOpenMask = currentOpenMask,
-                            PrevBrokenMask = currentBrokenMask,
+                            PrevAnyDoorBroken = currentDoorBroken,
                             RandomChecked = false,
                             RandomResult = false,
                             LoudApplied = false,
@@ -452,12 +431,11 @@ public sealed class RealisticVehicleRadio : Script
                         };
                     }
 
-                    // detect re-evaluation triggers - ONLY check enabled features
+                    // FIXED in V1.2.1: detect re-evaluation triggers in BOTH directions (e.g., Intact->Broken AND Broken->Intact)
                     bool roofChanged = roofEnabled && vstate.PrevRoofState != currentRoof;
-                    bool windowsWentFromBrokenToAllIntact = windowEnabled && vstate.PrevAnyWindowBroken && !currentAnyWindowBroken;
-                    bool doorOpenToClose = doorEnabled && (vstate.PrevOpenMask & ~currentOpenMask) != 0;
-                    bool doorBrokenToFixed = doorEnabled && (vstate.PrevBrokenMask & ~currentBrokenMask) != 0;
-                    bool reevalTriggered = roofChanged || windowsWentFromBrokenToAllIntact || doorOpenToClose || doorBrokenToFixed;
+                    bool windowsChanged = windowEnabled && vstate.PrevAnyWindowBroken != currentAnyWindowBroken;
+                    bool doorsChanged = doorEnabled && vstate.PrevAnyDoorBroken != currentDoorBroken;
+                    bool reevalTriggered = roofChanged || windowsChanged || doorsChanged;
 
                     // Determine "guaranteed" condition now
                     bool guaranteed = false;
@@ -471,17 +449,9 @@ public sealed class RealisticVehicleRadio : Script
                         guaranteed = true;
                     }
 
-                    if (!guaranteed && doorEnabled)
+                    if (!guaranteed && doorEnabled && currentDoorBroken)
                     {
-                        for (int d = 0; d < doors.Length; d++)
-                        {
-                            VehicleDoor vd = doors[d];
-                            if (vd.IsOpen || vd.IsBroken || vd.IsFullyOpen)
-                            {
-                                guaranteed = true;
-                                break;
-                            }
-                        }
+                        guaranteed = true;
                     }
 
                     // Evaluate loudness decision
@@ -525,8 +495,7 @@ public sealed class RealisticVehicleRadio : Script
                     // update previous physical state for next tick
                     vstate.PrevRoofState = roofEnabled ? currentRoof : vstate.PrevRoofState;
                     vstate.PrevAnyWindowBroken = windowEnabled ? currentAnyWindowBroken : vstate.PrevAnyWindowBroken;
-                    vstate.PrevOpenMask = doorEnabled ? currentOpenMask : vstate.PrevOpenMask;
-                    vstate.PrevBrokenMask = doorEnabled ? currentBrokenMask : vstate.PrevBrokenMask;
+                    vstate.PrevAnyDoorBroken = doorEnabled ? currentDoorBroken : vstate.PrevAnyDoorBroken;
 
                     // NEW in V1.2.0: remember the enabled-state we just used
                     vstate.LastRoofEnabled = roofEnabled;
@@ -744,9 +713,7 @@ public sealed class RealisticVehicleRadio : Script
             return;
         }
 
-        int currentWeatherHash = Function.Call<int>(Hash.GET_PREV_WEATHER_TYPE_HASH_NAME);
-
-        if (currentWeatherHash != WEATHER_THUNDER_HASH)
+        if (World.Weather != Weather.ThunderStorm)
         {
             if (_thunderInterferenceActive || _thunderState != ThunderInterferenceState.Inactive)
             {

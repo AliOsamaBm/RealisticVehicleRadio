@@ -30,7 +30,7 @@ using GTA.UI;
 
 public static class UpdateChecker
 {
-    public const string CurrentScriptVersion = "v1.2.0";
+    public const string CurrentScriptVersion = "v1.2.1";
 
     private const string _GITHUB_OWNER = "AliOsamaBm";
     private const string _GITHUB_REPO = "RealisticVehicleRadio";

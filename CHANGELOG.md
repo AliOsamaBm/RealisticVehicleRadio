@@ -1,3 +1,12 @@
+## [v1.2.1] - Logic Bug Fixes in Loudness & Weather
+
+### Fixed
+* Loudness re-evaluation now triggers correctly in **both directions** (e.g., breaking an intact window or opening a closed door will now instantly make the radio loud, instead of requiring the player to exit and re-enter the vehicle).
+* Window detection now checks all vehicle glass (including the windshield and rear glass) using SHVDN's `AllWindowsIntact` property, fixing a bug where shooting out the front/rear glass didn't trigger the loud radio mode.
+* Thunderstorm interference now correctly detects the weather during active transitions by using SHVDN's native `World.Weather` property, fixing a blindspot when the game was actively transitioning into a storm.
+
+---
+
 ## [v1.2.0] - Quality of Life & Performance Fixes
 
 ### Added
