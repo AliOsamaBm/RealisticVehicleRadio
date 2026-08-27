@@ -30,3 +30,4 @@
 * JSON-based storage for settings and tunnel coordinates.
 * Async based I/O operations.
 * Predefined tunnels.
+* Support for both versions of GTA V (Legacy and Enhanced).
