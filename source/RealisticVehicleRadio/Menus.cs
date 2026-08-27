@@ -1,5 +1,5 @@
 ﻿/*
- * Realistic Vehicle Radio
+ * Advanced Custom Blips
  * Copyright (C) 2026 Ali Osama
  *
  * This program is free software: you can redistribute it and/or modify
@@ -18,6 +18,7 @@
 
 using System;
 using System.Windows.Forms;
+using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
@@ -113,6 +114,13 @@ public sealed class Menus
     }
 );
 
+        TunnelDebugVisualizerSettingsMenu.Opening += (s, e) =>
+        {
+            pendingMaxDistance = debugCfg.MaxDrawDistance;
+            maxDrawDistance.Title = $"Max Draw Distance ({pendingMaxDistance} m)";
+            toggleDebugKeyItem.SelectedItem = debugCfg.DebugToggleKey;
+        };
+
         _mainSettingsTreeMenu.AddSubMenu(TunnelDebugVisualizerSettingsMenu, "").Title = "Debug Settings";
     }
 
@@ -120,6 +128,7 @@ public sealed class Menus
     {
         _tunnelRecorderSettingsMenu = GUI.CreateAndRegisterMenu(UiMenuPool, "Tunnel Recorder", "Record & Export Tunnel Coordinates");
 
+        string pendingTunnelName = TunnelRecorder.PendingTunnelName;
         float pendingMinDistanceMeters = recorderCfg.MinDistanceMeters;
         float pendingHeadingDeltaThresholdDeg = recorderCfg.HeadingDeltaThresholdDeg;
         float pendingMaxHorizontalSearch = recorderCfg.MaxHorizontalSearch;
@@ -135,13 +144,16 @@ public sealed class Menus
         NativeItem maxVerticalSearch = new NativeItem($"Max Vertical Search ({pendingMaxVerticalSearch} m)", "Maximum distance to search up and down for the tunnel ceiling and floor. ~y~Increase if the tunnel is exceptionally tall.");
         NativeItem wallRayHeightOffset = new NativeItem($"Wall Ray Height Offset ({pendingWallRayHeightOffset} m)", "Vertical offset from the vehicle where the wall-detecting rays start. ~y~Adjust if the rays are hitting the ground or the vehicle itself.");
 
-        NativeItem nextTunnelNameItem = new NativeItem($"Next Tunnel Name: {TunnelRecorder.PendingTunnelName}", "Set a custom name for the next tunnel you record. ~y~Click to type a name.");
+        NativeItem nextTunnelNameItem = new NativeItem($"Next Tunnel Name: {pendingTunnelName}", "Set a custom name for the next tunnel you record. ~y~Click to type a name. Press Save to apply.");
         nextTunnelNameItem.Activated += (s, e) =>
         {
             string userInput = GUI.PromptUserForInput(false);
 
-            TunnelRecorder.PendingTunnelName = userInput;
-            nextTunnelNameItem.Title = $"Next Tunnel Name: {userInput}";
+            if (userInput != null)
+            {
+                pendingTunnelName = userInput;
+                nextTunnelNameItem.Title = $"Next Tunnel Name: {pendingTunnelName}";
+            }
         };
 
         BindFloatInput(minDistanceMeters, val => pendingMinDistanceMeters = val, "Min Distance ({0} m)", "Enter a numeric value.");
@@ -163,7 +175,7 @@ public sealed class Menus
         NativeCheckboxItem enableManualRecording = GUI.CreateCheckboxItem(
             "Enable Manual Recording",
             TunnelRecorder.EnableManualRecording,
-            "Toggles manual recording mode. When enabled, preview lines are drawn around your vehicle and the automatic recording key is disabled."
+            "Toggles manual recording mode. When enabled, preview lines are drawn around your vehicle (requires Debug mode) and the automatic recording key is disabled."
         );
 
         // Sync the checkbox state through the safe manual-mode switch.
@@ -248,8 +260,10 @@ public sealed class Menus
         pendingMaxVerticalSearch = 30.0f; maxVerticalSearch.Title = $"Max Vertical Search ({pendingMaxVerticalSearch} m)";
         pendingWallRayHeightOffset = 0.5f; wallRayHeightOffset.Title = $"Wall Ray Height Offset ({pendingWallRayHeightOffset} m)";
         toggleRecordingKeyItem.SelectedItem = "F7";
-        TunnelRecorder.PendingTunnelName = "New Tunnel";
-        nextTunnelNameItem.Title = $"Next Tunnel Name: {TunnelRecorder.PendingTunnelName}";
+
+        // Stage the default name; do NOT touch TunnelRecorder.PendingTunnelName here.
+        pendingTunnelName = "New Tunnel";
+        nextTunnelNameItem.Title = $"Next Tunnel Name: {pendingTunnelName}";
     },
     saveAction: () =>
     {
@@ -259,9 +273,34 @@ public sealed class Menus
         recorderCfg.MaxVerticalSearch = pendingMaxVerticalSearch;
         recorderCfg.WallRayHeightOffset = pendingWallRayHeightOffset;
         recorderCfg.RecordToggleKey = toggleRecordingKeyItem.SelectedItem;
+        // Commit the staged tunnel name.
+        TunnelRecorder.PendingTunnelName = pendingTunnelName;
         FileOperations.SaveSettingsSection(recorderCfg, cfg => cfg.TunnelRecorder, (cfg, settings) => cfg.TunnelRecorder = settings);
     }
 );
+
+        _tunnelRecorderSettingsMenu.Opening += (s, e) =>
+        {
+            pendingTunnelName = TunnelRecorder.PendingTunnelName;
+            nextTunnelNameItem.Title = $"Next Tunnel Name: {pendingTunnelName}";
+
+            pendingMinDistanceMeters = recorderCfg.MinDistanceMeters;
+            minDistanceMeters.Title = $"Min Distance ({pendingMinDistanceMeters} m)";
+
+            pendingHeadingDeltaThresholdDeg = recorderCfg.HeadingDeltaThresholdDeg;
+            headingDeltaThresholdDeg.Title = $"Heading Delta Threshold ({pendingHeadingDeltaThresholdDeg} °)";
+
+            pendingMaxHorizontalSearch = recorderCfg.MaxHorizontalSearch;
+            maxHorizontalSearch.Title = $"Max Horizontal Search ({pendingMaxHorizontalSearch} m)";
+
+            pendingMaxVerticalSearch = recorderCfg.MaxVerticalSearch;
+            maxVerticalSearch.Title = $"Max Vertical Search ({pendingMaxVerticalSearch} m)";
+
+            pendingWallRayHeightOffset = recorderCfg.WallRayHeightOffset;
+            wallRayHeightOffset.Title = $"Wall Ray Height Offset ({pendingWallRayHeightOffset} m)";
+
+            toggleRecordingKeyItem.SelectedItem = recorderCfg.RecordToggleKey;
+        };
 
         _mainSettingsTreeMenu.AddSubMenu(_tunnelRecorderSettingsMenu, "").Title = "Tunnel Recorder";
     }
@@ -290,22 +329,22 @@ public sealed class Menus
 
         NativeCheckboxItem disableRadioInWater = GUI.CreateCheckboxItem("Disable Radio In Water", mainCfg.DisableRadioInWater);
 
-        //NativeCheckboxItem autoCheckUpdatesItem = GUI.CreateCheckboxItem("Auto-check for updates on startup", mainCfg.AutoCheckForUpdatesOnStartup, "Automatically checks for script updates when the game starts. ~y~Press the save button to apply changes.");
+        NativeCheckboxItem autoCheckUpdatesItem = GUI.CreateCheckboxItem("Auto-check for updates on startup", mainCfg.AutoCheckForUpdatesOnStartup, "Automatically checks for script updates when the game starts. ~y~Press the save button to apply changes.");
 
-        //NativeItem checkUpdatesBtn = new NativeItem("~b~Check for Updates Now");
-        //checkUpdatesBtn.Activated += (s, i) =>
-        //{
-        //    Task.Run(async () => await UpdateChecker.CheckForUpdatesAsync());
-        //};
+        NativeItem checkUpdatesBtn = new NativeItem("~b~Check for Updates Now");
+        checkUpdatesBtn.Activated += (s, i) =>
+        {
+            Task.Run(async () => await UpdateChecker.CheckForUpdatesAsync());
+        };
 
         _mainSettingsMenu.Add(vehiclesSearchDistance);
         _mainSettingsMenu.Add(maxProcessVehicles);
         _mainSettingsMenu.Add(radioDisableDepthDistance);
         _mainSettingsMenu.Add(disableRadioInTunnels);
         _mainSettingsMenu.Add(disableRadioInWater);
-        //_mainSettingsMenu.Add(autoCheckUpdatesItem);
+        _mainSettingsMenu.Add(autoCheckUpdatesItem);
         _mainSettingsMenu.Add(openMenuKeyItem);
-        //_mainSettingsMenu.Add(checkUpdatesBtn);
+        _mainSettingsMenu.Add(checkUpdatesBtn);
         AddSaveAndResetButtons(_mainSettingsMenu,
     resetAction: () =>
     {
@@ -317,7 +356,7 @@ public sealed class Menus
         radioDisableDepthDistance.Title = $"Radio Disable Depth ({pendingRadioDisableDepth} m)";
         disableRadioInTunnels.Checked = true;
         disableRadioInWater.Checked = true;
-        //autoCheckUpdatesItem.Checked = true;
+        autoCheckUpdatesItem.Checked = true;
         openMenuKeyItem.SelectedItem = "F3";
     },
     saveAction: () =>
@@ -327,11 +366,29 @@ public sealed class Menus
         mainCfg.RadioDisableDepth = pendingRadioDisableDepth;
         mainCfg.DisableRadioInTunnels = disableRadioInTunnels.Checked;
         mainCfg.DisableRadioInWater = disableRadioInWater.Checked;
-        //mainCfg.AutoCheckForUpdatesOnStartup = autoCheckUpdatesItem.Checked;
+        mainCfg.AutoCheckForUpdatesOnStartup = autoCheckUpdatesItem.Checked;
         mainCfg.OpenMenuKey = openMenuKeyItem.SelectedItem;
         FileOperations.SaveSettingsSection(mainCfg, cfg => cfg.RealisticVehicleRadio.Main, (cfg, settings) => cfg.RealisticVehicleRadio.Main = settings);
     }
 );
+
+        _mainSettingsMenu.Opening += (s, e) =>
+        {
+            pendingVehiclesSearchDistance = mainCfg.VehiclesSearchDistance;
+            vehiclesSearchDistance.Title = $"Vehicles Search Distance ({pendingVehiclesSearchDistance} m)";
+
+            pendingMaxProcessVehicles = mainCfg.MaxProcessVehicles;
+            maxProcessVehicles.Title = $"Max Process Vehicles ({pendingMaxProcessVehicles})";
+
+            pendingRadioDisableDepth = mainCfg.RadioDisableDepth;
+            radioDisableDepthDistance.Title = $"Radio Disable Depth ({pendingRadioDisableDepth} m)";
+
+            disableRadioInTunnels.Checked = mainCfg.DisableRadioInTunnels;
+            disableRadioInWater.Checked = mainCfg.DisableRadioInWater;
+            autoCheckUpdatesItem.Checked = mainCfg.AutoCheckForUpdatesOnStartup;
+
+            openMenuKeyItem.SelectedItem = mainCfg.OpenMenuKey;
+        };
 
         _realisticVehicleRadioSettingsMenu.AddSubMenu(_mainSettingsMenu, "").Title = "Main Settings";
     }
@@ -395,6 +452,17 @@ public sealed class Menus
     }
 );
 
+        _loudnessSettingsMenu.Opening += (s, e) =>
+        {
+            pendingRandomLoudRadioChance = loudnessCfg.RandomLoudRadioChancePercentage;
+            randomLoudRadioChancePercentage.Title = $"Random Loud Radio Chance ({pendingRandomLoudRadioChance} %)";
+
+            enableRoofCheck.Checked = loudnessCfg.EnableRoofCheck;
+            enableWindowCheck.Checked = loudnessCfg.EnableWindowCheck;
+            enableDoorCheck.Checked = loudnessCfg.EnableDoorCheck;
+            enableRandomChance.Checked = loudnessCfg.EnableRandomChance;
+        };
+
         _realisticVehicleRadioSettingsMenu.AddSubMenu(_loudnessSettingsMenu, "").Title = "Radio Loudness";
     }
 
@@ -435,6 +503,15 @@ saveAction: () =>
 }
 );
 
+        _tunnelDetectionSettingsMenu.Opening += (s, e) =>
+        {
+            pendingTunnelHorizontalTolerance = tunnelCfg.TunnelHorizontalTolerance;
+            tunnelHorizontalTolerance.Title = $"Horizontal Tolerance ({pendingTunnelHorizontalTolerance} m)";
+
+            pendingTunnelVerticalTolerance = tunnelCfg.TunnelVerticalTolerance;
+            tunnelVerticalTolerance.Title = $"Vertical Tolerance ({pendingTunnelVerticalTolerance} m)";
+        };
+
         _realisticVehicleRadioSettingsMenu.AddSubMenu(_tunnelDetectionSettingsMenu, "").Title = "Tunnel Detection";
     }
 
@@ -454,37 +531,31 @@ saveAction: () =>
         NativeCheckboxItem disableRadioForMilitaryVehicles = GUI.CreateCheckboxItem("Disable Radio For Military Vehicles", exclusionsCfg.DisableRadioForMilitaryVehicles);
 
         NativeMenu excludedVehiclesHashes = GUI.CreateAndRegisterMenu(UiMenuPool, "Excluded Vehicles", "Add or remove specific vehicle models");
+
+        // ==========================================
+        // OPTION A: Staged (pending) vehicle list.
+        // Nothing is applied to the live config until "Save Changes" is pressed.
+        // ==========================================
+        List<VehicleHash> pendingVehicles = new List<VehicleHash>(exclusionsCfg.VehiclesWithNoRadio);
         List<NativeItem> vehicleItems = new List<NativeItem>();
 
-        NativeItem addCurrentVehicleBtn = new NativeItem("~g~Add Current Vehicle", "Adds the vehicle you are currently sitting in to the list to disable radio for it. ~y~Press the save changes button in the previous menu to save changes.");
+        NativeItem addCurrentVehicleBtn = new NativeItem(
+            "~g~Add Current Vehicle",
+            "Adds the vehicle you are currently sitting in to the list to disable radio for it. ~y~Press the save changes button to apply."
+        );
+
         addCurrentVehicleBtn.Activated += (s, e) =>
         {
             Ped player = Game.Player.Character;
             if (ValidFunctions.IsValidPed(player) && ValidFunctions.IsValidVehicle(player.CurrentVehicle))
             {
                 VehicleHash hash = (VehicleHash)player.CurrentVehicle.Model.Hash;
-                List<VehicleHash> list = new List<VehicleHash>(exclusionsCfg.VehiclesWithNoRadio);
 
-                if (!list.Contains(hash))
+                if (!pendingVehicles.Contains(hash))
                 {
-                    list.Add(hash);
-                    exclusionsCfg.VehiclesWithNoRadio = list.ToArray();
-
-                    NativeItem newItem = new NativeItem(hash.ToString(), "Click to remove from exclusion list.");
-                    newItem.Activated += (s2, e2) =>
-                    {
-                        List<VehicleHash> currentList = new List<VehicleHash>(exclusionsCfg.VehiclesWithNoRadio);
-                        currentList.Remove(hash);
-                        exclusionsCfg.VehiclesWithNoRadio = currentList.ToArray();
-
-                        excludedVehiclesHashes.Remove(newItem);
-                        vehicleItems.Remove(newItem);
-                        Notification.PostTicker($"Removed {hash}.", true);
-                    };
-
-                    excludedVehiclesHashes.Add(newItem);
-                    vehicleItems.Add(newItem);
-                    Notification.PostTicker($"Added {hash} to exclusions.", true);
+                    pendingVehicles.Add(hash);
+                    BuildVehicleList();
+                    Notification.PostTicker($"Added {hash} to exclusions. ~y~Press Save to apply.", true);
                 }
                 else
                 {
@@ -502,19 +573,16 @@ saveAction: () =>
             for (int i = 0; i < vehicleItems.Count; i++) excludedVehiclesHashes.Remove(vehicleItems[i]);
             vehicleItems.Clear();
 
-            for (int i = 0; i < exclusionsCfg.VehiclesWithNoRadio.Length; i++)
+            for (int i = 0; i < pendingVehicles.Count; i++)
             {
-                VehicleHash hash = exclusionsCfg.VehiclesWithNoRadio[i];
-                NativeItem item = new NativeItem(hash.ToString(), "Click to remove from exclusion list.");
+                VehicleHash hash = pendingVehicles[i];
+
+                NativeItem item = new NativeItem(hash.ToString(), "Click to remove from exclusion list. ~y~Press Save to apply.");
                 item.Activated += (s, e) =>
                 {
-                    List<VehicleHash> list = new List<VehicleHash>(exclusionsCfg.VehiclesWithNoRadio);
-                    list.Remove(hash);
-                    exclusionsCfg.VehiclesWithNoRadio = list.ToArray();
-
-                    excludedVehiclesHashes.Remove(item);
-                    vehicleItems.Remove(item);
-                    Notification.PostTicker($"Removed {hash}.", true);
+                    pendingVehicles.Remove(hash);
+                    BuildVehicleList();
+                    Notification.PostTicker($"Removed {hash}. ~y~Press Save to apply.", true);
                 };
 
                 excludedVehiclesHashes.Add(item);
@@ -552,8 +620,14 @@ saveAction: () =>
                 disableRadioForRegularQuadBikes.Checked = true;
                 disableRadioForMilitaryVehicles.Checked = true;
 
-                exclusionsCfg.VehiclesWithNoRadio = new[] { VehicleHash.OpenWheel1, VehicleHash.OpenWheel2, VehicleHash.Formula, VehicleHash.Formula2 };
+                // Stage the default vehicle list; do NOT touch exclusionsCfg here.
+                pendingVehicles.Clear();
+                pendingVehicles.Add(VehicleHash.OpenWheel1);
+                pendingVehicles.Add(VehicleHash.OpenWheel2);
+                pendingVehicles.Add(VehicleHash.Formula);
+                pendingVehicles.Add(VehicleHash.Formula2);
                 BuildVehicleList();
+
                 Notification.PostTicker("Defaults restored. Press Save to apply.", true);
             },
             saveAction: () =>
@@ -569,9 +643,30 @@ saveAction: () =>
                 exclusionsCfg.DisableRadioForRegularQuadBikes = disableRadioForRegularQuadBikes.Checked;
                 exclusionsCfg.DisableRadioForMilitaryVehicles = disableRadioForMilitaryVehicles.Checked;
 
+                // Commit the staged vehicle list to the live config.
+                exclusionsCfg.VehiclesWithNoRadio = pendingVehicles.ToArray();
+
                 FileOperations.SaveSettingsSection(exclusionsCfg, cfg => cfg.RealisticVehicleRadio.Exclusions, (cfg, settings) => cfg.RealisticVehicleRadio.Exclusions = settings);
             }
         );
+
+        _exclusionsSettingsMenu.Opening += (s, e) =>
+        {
+            disableRadioForMotorcycles.Checked = exclusionsCfg.DisableRadioForMotorcycles;
+            disableRadioForPlanes.Checked = exclusionsCfg.DisableRadioForPlanes;
+            disableRadioForAircraft.Checked = exclusionsCfg.DisableRadioForAircraft;
+            disableRadioForQuadBikes.Checked = exclusionsCfg.DisableRadioForQuadBikes;
+            disableRadioForHelicopters.Checked = exclusionsCfg.DisableRadioForHelicopters;
+            disableRadioForTrains.Checked = exclusionsCfg.DisableRadioForTrains;
+            disableRadioForSubmarines.Checked = exclusionsCfg.DisableRadioForSubmarines;
+            disableRadioForSubmarineCars.Checked = exclusionsCfg.DisableRadioForSubmarineCars;
+            disableRadioForRegularQuadBikes.Checked = exclusionsCfg.DisableRadioForRegularQuadBikes;
+            disableRadioForMilitaryVehicles.Checked = exclusionsCfg.DisableRadioForMilitaryVehicles;
+
+            pendingVehicles.Clear();
+            pendingVehicles.AddRange(exclusionsCfg.VehiclesWithNoRadio);
+            BuildVehicleList();
+        };
 
         _realisticVehicleRadioSettingsMenu.AddSubMenu(_exclusionsSettingsMenu, "").Title = "Excluded Vehicles";
     }
@@ -726,6 +821,29 @@ saveAction: () =>
                 );
             }
         );
+
+        _thunderstormSettingsMenu.Opening += (s, e) =>
+        {
+            enableThunderInterference.Checked = thunderCfg.EnableThunderstormInterference;
+
+            pendingInitialMin = thunderCfg.InitialInterferenceDelayMin;
+            initialDelayMin.Title = $"Initial Delay Min ({pendingInitialMin} s)";
+
+            pendingInitialMax = thunderCfg.InitialInterferenceDelayMax;
+            initialDelayMax.Title = $"Initial Delay Max ({pendingInitialMax} s)";
+
+            pendingDurationMin = thunderCfg.InterferenceDurationMin;
+            durationMin.Title = $"Interference Duration Min ({pendingDurationMin} s)";
+
+            pendingDurationMax = thunderCfg.InterferenceDurationMax;
+            durationMax.Title = $"Interference Duration Max ({pendingDurationMax} s)";
+
+            pendingNextMin = thunderCfg.NextInterferenceDelayMin;
+            nextDelayMin.Title = $"Next Delay Min ({pendingNextMin} s)";
+
+            pendingNextMax = thunderCfg.NextInterferenceDelayMax;
+            nextDelayMax.Title = $"Next Delay Max ({pendingNextMax} s)";
+        };
 
         _realisticVehicleRadioSettingsMenu.AddSubMenu(_thunderstormSettingsMenu, "").Title = "Thunderstorm Interference";
     }

@@ -50,6 +50,8 @@
 * **Vehicle Exclusions:** Disable radio logic entirely for specific classes (Aircraft, Boats, Motorcycles) or specific vehicle hashes.
 * **JSON Configuration:** Full control over tolerances, search distances, and hotkeys via easy-to-edit JSON files.
 * **LemonUI Integration:** In-game menu to manage settings and tunnels.
+* **Automatic Update Checker:** Automatically checks GitHub Releases on startup and notifies you in-game if a newer version is available.
+* **Staged Menu Saving:** "Reset to Defaults" now safely stages changes in the menu without applying them until you explicitly press "Save Changes".
 
 ---
 
@@ -60,8 +62,10 @@
 1. **Spatial Hashing Grid (`TunnelSpatialIndex`)**: 
    Instead of checking every vehicle against every tunnel segment in the world (O(N*M)), the script pre-computes tunnel segments into a 64m spatial grid. At runtime, vehicles only check segments in their immediate grid cells. Far-away tunnels are completely ignored by the CPU.
 2. **Decoupled Logic & Rendering**:
-   Heavy native calls (raycasting, vehicle state checking, water depth) are throttled to a `100ms` logic loop. UI, Menu processing, and Debug Drawing run at `0ms` (every frame) to ensure smooth visuals without blocking the game thread.
-
+   Heavy native calls (raycasting, vehicle state checking, water depth) are throttled to a `100ms` logic loop. UI, Menu processing, and Debug Drawing run at `1ms` (every frame) to ensure smooth visuals without blocking the game thread.
+3. **Safe Script Abort & State Cleanup**:
+   When the script is unloaded, aborted, or reloaded, it gracefully iterates through all tracked vehicles and resets their native radio states. This prevents vehicles from getting "stuck" with disabled or loud radios if the script encounters an error or is stopped.
+   
 ---
 
 ## 📍 Companion Mod

@@ -28,9 +28,9 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyTrademark("Grand Theft Auto V is a trademark of Rockstar Games.")]
 [assembly: AssemblyCulture("")]
 
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
-[assembly: AssemblyInformationalVersion("1.0.0 Release")]
+[assembly: AssemblyVersion("1.2.0.0")]
+[assembly: AssemblyFileVersion("1.2.0.0")]
+[assembly: AssemblyInformationalVersion("1.2.0 Release")]
 
 [assembly: ComVisible(false)]
 [assembly: Guid("b8446f97-f2c4-45d1-8ecb-028291359104")]

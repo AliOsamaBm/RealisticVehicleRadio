@@ -1,5 +1,5 @@
 ﻿/*
- * Realistic Vehicle Radio
+ * Advanced Custom Blips
  * Copyright (C) 2026 Ali Osama
  *
  * This program is free software: you can redistribute it and/or modify
@@ -18,6 +18,7 @@
 
 using System;
 using System.Windows.Forms;
+using System.Threading.Tasks;
 using System.Collections.Generic;
 
 using static Menus;
@@ -46,6 +47,10 @@ public sealed class RealisticVehicleRadio : Script
     private readonly Dictionary<int, VehicleRadioState> _vehicleStates = new Dictionary<int, VehicleRadioState>();
     private readonly Dictionary<int, bool> _vehicleRadioEnabledStates = new Dictionary<int, bool>();
 
+    // Persistent tracking for cleanup on script abort/reload
+    private readonly HashSet<int> _touchedRadioEnabled = new HashSet<int>();
+    private readonly HashSet<int> _touchedLoud = new HashSet<int>();
+
     // ==========================================
     // CACHED CONFIGURATION INSTANCES
     // ==========================================
@@ -67,23 +72,7 @@ public sealed class RealisticVehicleRadio : Script
         Interfering
     }
 
-    private enum WeatherType
-    {
-        EXTRA_SUNNY = -1750463879,
-        CLEAR = 916995460,
-        NEUTRAL = -1530260698,
-        SMOG = 282916021,
-        FOGGY = -1368164796,
-        OVERCAST = -1148613331,
-        CLOUDS = 821931868,
-        CLEARING = 1840358669,
-        RAIN = 1420204096,
-        THUNDER = -1233681761,
-        SNOW = -273223690,
-        BLIZZARD = 669657108,
-        LIGHT_SNOW = 603685163,
-        X_MAS = -1429616491
-    }
+    private const int WEATHER_THUNDER_HASH = -1233681761;
 
     private ThunderInterferenceState _thunderState = ThunderInterferenceState.Inactive;
     private bool _thunderInterferenceActive = false;
@@ -103,6 +92,12 @@ public sealed class RealisticVehicleRadio : Script
 
         // whether we already applied loud to avoid duplicate native calls
         public bool LoudApplied;
+
+        // NEW in V1.2.0: remember which features were enabled when the last decision was made
+        public bool LastRoofEnabled;
+        public bool LastWindowEnabled;
+        public bool LastDoorEnabled;
+        public bool LastRandomEnabled;
     }
 
     public struct TunnelPoint
@@ -152,10 +147,10 @@ public sealed class RealisticVehicleRadio : Script
 
         _menus = new Menus(_mainCfg, _loudnessCfg, _tunnelCfg, _exclusionsCfg, _debugCfg, _recorderCfg, _thunderCfg);
 
-        //if (_mainCfg.AutoCheckForUpdatesOnStartup)
-        //{
-        //    Task.Run(async () => await UpdateChecker.CheckForUpdatesAsync());
-        //}
+        if (_mainCfg.AutoCheckForUpdatesOnStartup)
+        {
+            Task.Run(async () => await UpdateChecker.CheckForUpdatesAsync());
+        }
 
         Tick += OnTick;
         KeyDown += OnKeyDown;
@@ -189,7 +184,7 @@ public sealed class RealisticVehicleRadio : Script
         {
             // Disable
             Input.Controls.DisableAllControlActionsThisFrame(Input.ControlType.PlayerControl);
-			// Use Game.DisableAllControlsThisFrame(); while using SHVDNE
+            // Use Game.DisableAllControlsThisFrame(); while using SHVDNE
 
             // Hide the specific menu that triggered the keybind
             if (PendingMenu != null)
@@ -248,7 +243,7 @@ public sealed class RealisticVehicleRadio : Script
                 }
             }
 
-            if (IsManualRecordingActive)
+            if (IsManualRecordingActive && TunnelDebugVisualizer.EnableDebug)
             {
                 Vehicle currentPlayerVehicle = playerPed.CurrentVehicle;
                 if (ValidFunctions.IsValidVehicle(currentPlayerVehicle))
@@ -328,8 +323,6 @@ public sealed class RealisticVehicleRadio : Script
                     continue;
                 }
 
-                Vector3 vehiclePosition = vehicle.Position;
-
                 // Radio is off already by default when engine is not running, so no need to procced further
                 if (!vehicle.IsEngineRunning)
                 {
@@ -366,6 +359,8 @@ public sealed class RealisticVehicleRadio : Script
                     {
                         Function.Call(Hash.SET_VEHICLE_RADIO_ENABLED, handle, false);
                         Function.Call(Hash.SET_VEH_RADIO_STATION, handle, "OFF");
+
+                        _touchedRadioEnabled.Add(handle);
 
                         /*
                         Important:         
@@ -449,7 +444,11 @@ public sealed class RealisticVehicleRadio : Script
                             PrevBrokenMask = currentBrokenMask,
                             RandomChecked = false,
                             RandomResult = false,
-                            LoudApplied = false
+                            LoudApplied = false,
+                            LastRoofEnabled = roofEnabled,
+                            LastWindowEnabled = windowEnabled,
+                            LastDoorEnabled = doorEnabled,
+                            LastRandomEnabled = randomEnabled
                         };
                     }
 
@@ -486,7 +485,14 @@ public sealed class RealisticVehicleRadio : Script
                     }
 
                     // Evaluate loudness decision
-                    if (!vstate.RandomChecked || reevalTriggered)
+                    // NEW in V1.2.0: check if config changed then reevaluate
+                    bool configChanged =
+                        vstate.LastRoofEnabled != roofEnabled ||
+                        vstate.LastWindowEnabled != windowEnabled ||
+                        vstate.LastDoorEnabled != doorEnabled ||
+                        vstate.LastRandomEnabled != randomEnabled;
+
+                    if (!vstate.RandomChecked || reevalTriggered || configChanged)
                     {
                         bool finalLoud;
                         if (guaranteed)
@@ -511,6 +517,8 @@ public sealed class RealisticVehicleRadio : Script
                         {
                             Function.Call(Hash.SET_VEHICLE_RADIO_LOUD, handle, finalLoud);
                             vstate.LoudApplied = finalLoud;
+
+                            _touchedLoud.Add(handle);
                         }
                     }
 
@@ -520,11 +528,23 @@ public sealed class RealisticVehicleRadio : Script
                     vstate.PrevOpenMask = doorEnabled ? currentOpenMask : vstate.PrevOpenMask;
                     vstate.PrevBrokenMask = doorEnabled ? currentBrokenMask : vstate.PrevBrokenMask;
 
+                    // NEW in V1.2.0: remember the enabled-state we just used
+                    vstate.LastRoofEnabled = roofEnabled;
+                    vstate.LastWindowEnabled = windowEnabled;
+                    vstate.LastDoorEnabled = doorEnabled;
+                    vstate.LastRandomEnabled = randomEnabled;
+
                     // save state back
                     _vehicleStates[handle] = vstate;
                 }
                 else
                 {
+                    // NEW in V1.2.0: If loud was applied before, turn it off before cleaning up
+                    if (_vehicleStates.TryGetValue(handle, out VehicleRadioState vstate) && vstate.LoudApplied)
+                    {
+                        Function.Call(Hash.SET_VEHICLE_RADIO_LOUD, handle, false);
+                    }
+
                     // IMPORTANT: Clean up dictionary to prevent memory leaks if features are toggled off
                     _vehicleStates.Remove(handle);
                 }
@@ -537,6 +557,8 @@ public sealed class RealisticVehicleRadio : Script
 
                 if (tunnelOrWaterEnabled)
                 {
+                    Vector3 vehiclePosition = vehicle.Position;
+
                     bool shouldDisableRadio = false;
 
                     // Short-circuit ensures we only check tunnels if the feature is enabled
@@ -576,11 +598,28 @@ public sealed class RealisticVehicleRadio : Script
                 // is already false, finalRadioEnabled remains false
                 bool finalRadioEnabled = baseRadioEnabled && !_thunderInterferenceActive;
 
-                // Only call the native if the final combined state has actually changed
-                if (!_vehicleRadioEnabledStates.TryGetValue(handle, out bool lastRadioEnabled) || lastRadioEnabled != finalRadioEnabled)
+                if (_vehicleRadioEnabledStates.TryGetValue(handle, out bool lastRadioEnabled))
                 {
-                    Function.Call(Hash.SET_VEHICLE_RADIO_ENABLED, handle, finalRadioEnabled);
-                    _vehicleRadioEnabledStates[handle] = finalRadioEnabled;
+                    // We have touched this vehicle before. Only update if the state actually changed.
+                    if (lastRadioEnabled != finalRadioEnabled)
+                    {
+                        Function.Call(Hash.SET_VEHICLE_RADIO_ENABLED, handle, finalRadioEnabled);
+                        _vehicleRadioEnabledStates[handle] = finalRadioEnabled;
+                    }
+                }
+                else
+                {
+                    /* 
+                       We have NEVER touched this vehicle's radio. 
+                       Only intervene if we need to DISABLE it (e.g., they just drove into a tunnel).
+                    */
+                    if (!finalRadioEnabled)
+                    {
+                        Function.Call(Hash.SET_VEHICLE_RADIO_ENABLED, handle, false);
+                        _vehicleRadioEnabledStates[handle] = false;
+
+                        _touchedRadioEnabled.Add(handle);
+                    }
                 }
             } // end for vehicles
 
@@ -678,19 +717,6 @@ public sealed class RealisticVehicleRadio : Script
                 PendingMenu.Visible = true;
             }
 
-            switch (PendingKey)
-            {
-                case PendingKeyBind.OpenMenu:
-                    _mainCfg.OpenMenuKey = keyName;
-                    break;
-                case PendingKeyBind.Debug:
-                    _debugCfg.DebugToggleKey = keyName;
-                    break;
-                case PendingKeyBind.Record:
-                    _recorderCfg.RecordToggleKey = keyName;
-                    break;
-            }
-
             // Update list selection (no allocations)
             if (PendingListItem != null)
             {
@@ -718,9 +744,9 @@ public sealed class RealisticVehicleRadio : Script
             return;
         }
 
-        WeatherType currentWeather = (WeatherType)Function.Call<int>(Hash.GET_PREV_WEATHER_TYPE_HASH_NAME);
+        int currentWeatherHash = Function.Call<int>(Hash.GET_PREV_WEATHER_TYPE_HASH_NAME);
 
-        if (currentWeather != WeatherType.THUNDER)
+        if (currentWeatherHash != WEATHER_THUNDER_HASH)
         {
             if (_thunderInterferenceActive || _thunderState != ThunderInterferenceState.Inactive)
             {
@@ -799,70 +825,37 @@ public sealed class RealisticVehicleRadio : Script
         return (float)MathFunctions.NextDouble(min, max);
     }
 
+    // Fixed limitaion found in V1.0.0
     private void RestoreVehicleRadioStates()
     {
-        /*
-        Limitation: If a vehicle was disabled by the script, then later removed from those dictionaries 
-                    because it left the processed vehicle list, OnAbort will not know about it anymore.
-        */
-        try
+        // 1. Restore Radio Enabled state
+        foreach (int handle in _touchedRadioEnabled)
         {
-            // 1. Re-enable radios that the script disabled.
-            //    Also make sure they are not loud anymore.
-            List<int> radioHandles = new List<int>(_vehicleRadioEnabledStates.Keys);
-
-            for (int i = 0; i < radioHandles.Count; i++)
+            Vehicle veh = Entity.FromHandle(handle) as Vehicle;
+            if (ValidFunctions.IsValidVehicle(veh))
             {
-                int handle = radioHandles[i];
+                // Reset to vanilla default (Enabled)
+                Function.Call(Hash.SET_VEHICLE_RADIO_ENABLED, handle, true);
+            }
+        }
 
-                Vehicle vehicle = Entity.FromHandle(handle) as Vehicle;
-
-                if (vehicle == null || !vehicle.Exists())
-                {
-                    continue;
-                }
-
-                // If the script left this radio disabled, re-enable it.
-                if (!_vehicleRadioEnabledStates.TryGetValue(handle, out bool radioEnabled) || !radioEnabled)
-                {
-                    Function.Call(Hash.SET_VEHICLE_RADIO_ENABLED, handle, true);
-                }
-
-                // Remove loud state.
+        // 2. Restore Loud state
+        foreach (int handle in _touchedLoud)
+        {
+            Vehicle veh = Entity.FromHandle(handle) as Vehicle;
+            if (ValidFunctions.IsValidVehicle(veh))
+            {
+                // Reset to vanilla default (Not Loud)
                 Function.Call(Hash.SET_VEHICLE_RADIO_LOUD, handle, false);
             }
-
-            // 2. Some vehicles may only exist in _vehicleStates because of loudness logic.
-            //    Make sure those are not loud either.
-            List<int> loudHandles = new List<int>();
-
-            foreach (var kv in _vehicleStates)
-            {
-                if (kv.Value != null && kv.Value.LoudApplied && !_vehicleRadioEnabledStates.ContainsKey(kv.Key))
-                {
-                    loudHandles.Add(kv.Key);
-                }
-            }
-
-            for (int i = 0; i < loudHandles.Count; i++)
-            {
-                int handle = loudHandles[i];
-
-                Vehicle vehicle = Entity.FromHandle(handle) as Vehicle;
-
-                if (vehicle == null || !vehicle.Exists())
-                {
-                    continue;
-                }
-
-                Function.Call(Hash.SET_VEHICLE_RADIO_LOUD, handle, false);
-            }
-
-            _vehicleRadioEnabledStates.Clear();
-            _vehicleStates.Clear();
         }
-        catch
-        {
-        }
+
+        // 3. Clear the persistent sets
+        _touchedRadioEnabled.Clear();
+        _touchedLoud.Clear();
+
+        // 4. Clear the active dictionaries
+        _vehicleStates.Clear();
+        _vehicleRadioEnabledStates.Clear();
     }
 }

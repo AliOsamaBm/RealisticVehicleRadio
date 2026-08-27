@@ -1,5 +1,5 @@
 ﻿/*
- * Realistic Vehicle Radio
+ * Advanced Custom Blips
  * Copyright (C) 2026 Ali Osama
  *
  * This program is free software: you can redistribute it and/or modify
@@ -40,7 +40,7 @@ public sealed class Configuration
         public float RadioDisableDepth { get; set; } = 10.0f;
         public bool DisableRadioInTunnels { get; set; } = true;
         public bool DisableRadioInWater { get; set; } = true;
-        //public bool AutoCheckForUpdatesOnStartup { get; set; } = true;
+        public bool AutoCheckForUpdatesOnStartup { get; set; } = true;
         public string OpenMenuKey { get; set; } = "F3";
     }
 

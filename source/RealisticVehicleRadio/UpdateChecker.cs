@@ -17,9 +17,12 @@
  */
 
 using System;
+using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 using System.Text.RegularExpressions;
+
+using Newtonsoft.Json.Linq;
 
 using static Helpers;
 
@@ -27,64 +30,135 @@ using GTA.UI;
 
 public static class UpdateChecker
 {
-    public const string CurrentScriptVersion = "v1.0.0";
-    private const string _MOD_PAGE_URL = "PASTE_REAL_LINK_HERE";
-    private const string _VERSION_REGEX_PATTERN = @"Realistic Vehicle Radio\s+v(\d+\.\d+\.\d+)";
+    public const string CurrentScriptVersion = "v1.2.0";
+
+    private const string _GITHUB_OWNER = "AliOsamaBm";
+    private const string _GITHUB_REPO = "RealisticVehicleRadio";
+
+    private const string _GITHUB_API_URL =
+        "https://api.github.com/repos/" + _GITHUB_OWNER + "/" + _GITHUB_REPO + "/releases/latest";
+
+    // =====================================================================
+    // FIX: Force TLS 1.2 for .NET Framework 4.8
+    // =====================================================================
+    static UpdateChecker()
+    {
+        /*
+           GitHub API requires TLS 1.2. Older .NET Framework versions default to TLS 1.0/1.1 
+           which causes the "Could not create SSL/TLS secure channel" error.
+        */
+        ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls;
+    }
+
+    // =====================================================================
+    // A single shared HttpClient (avoids socket exhaustion)
+    // =====================================================================
+    private static readonly HttpClient _client = CreateClient();
+
+    private static HttpClient CreateClient()
+    {
+        HttpClient client = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(15)
+        };
+
+        // GitHub API REQUIRES a User-Agent header, otherwise it returns 403.
+        client.DefaultRequestHeaders.Add("User-Agent", "RealisticVehicleRadio-UpdateChecker/1.0");
+        client.DefaultRequestHeaders.Add("Accept", "application/vnd.github+json");
+
+        return client;
+    }
 
     public static async Task CheckForUpdatesAsync()
     {
         try
         {
-            using (HttpClient client = new HttpClient())
+            using (HttpResponseMessage response = await _client.GetAsync(_GITHUB_API_URL))
             {
-                client.DefaultRequestHeaders.Add("User-Agent", "RealisticVehicleRadio-UpdateChecker/1.0"); // Be polite to the server
-                client.Timeout = TimeSpan.FromSeconds(15); // Set a timeout
-
-                string htmlContent = await client.GetStringAsync(_MOD_PAGE_URL);
-
-                // Use Regex to find the version on the page
-                Match match = Regex.Match(htmlContent, _VERSION_REGEX_PATTERN, RegexOptions.IgnoreCase);
-                if (match.Success && match.Groups.Count > 1)
+                // 404 = the repository exists, but no Release has been published yet.
+                if (response.StatusCode == HttpStatusCode.NotFound)
                 {
-                    string remoteVersion = "v" + match.Groups[1].Value; // Reconstruct full version string like "v3.0"
+                    Notification.PostTicker("~o~[Realistic Vehicle Radio] Update Check: No releases published on GitHub yet.", true);
+                    return;
+                }
 
-                    // Simple string comparison should work for standard versioning like v1.0, v1.1, v2.0, v3.1 etc.
-                    int versionComparison = string.Compare(CurrentScriptVersion, remoteVersion, StringComparison.OrdinalIgnoreCase);
+                response.EnsureSuccessStatusCode();
 
-                    if (versionComparison < 0) // Current < Remote (e.g., "v3.0" < "v3.1")
-                    {
-                        Notification.PostTicker($"~g~[Realistic Vehicle Radio] Update Available! ~w~{remoteVersion}~n~~b~Download from gta5-mods.com", true);
-                    }
-                    else if (versionComparison > 0)
-                    {
+                string json = await response.Content.ReadAsStringAsync();
+                JObject release = JObject.Parse(json);
 
-                    }
-                    else // Current == Remote
-                    {
-                        Notification.PostTicker($"~g~[Realistic Vehicle Radio] Up to date. Version: {CurrentScriptVersion}", true);
-                    }
+                string remoteTag = release["tag_name"]?.ToString();
+
+                if (string.IsNullOrWhiteSpace(remoteTag))
+                {
+                    Notification.PostTicker("~o~[Realistic Vehicle Radio] Update Check: Could not parse version.", true);
+                    return;
+                }
+
+                if (IsNewer(remoteTag, CurrentScriptVersion))
+                {
+                    Notification.PostTicker(
+                        $"~g~[Realistic Vehicle Radio] Update Available! ~w~{remoteTag}~n~~b~Download from the GitHub Releases page",
+                        true);
                 }
                 else
                 {
-                    // Optionally notify user that check failed (maybe page format changed?)
-                    Notification.PostTicker("~o~[Realistic Vehicle Radio] Update Check: Could not parse version.", true);
+                    Notification.PostTicker($"~g~[Realistic Vehicle Radio] Up to date. Version: {CurrentScriptVersion}", true);
                 }
             }
         }
         catch (HttpRequestException httpEx)
         {
-            // Optionally notify user: Network issue
             Logger.DisplayAndLogError(httpEx, "~o~[Realistic Vehicle Radio] Update Check: Network error.");
         }
-        catch (TaskCanceledException tcEx) // Likely a timeout
+        catch (TaskCanceledException tcEx) // Timeout
         {
-            // Optionally notify user: Timeout
             Logger.DisplayAndLogError(tcEx, "~o~[Realistic Vehicle Radio] Update Check: Timed out.");
         }
         catch (Exception ex)
         {
-            // Optionally notify user: Unexpected error
             Logger.DisplayAndLogError(ex, "~o~[Realistic Vehicle Radio] Update Check: An error occurred.");
         }
+    }
+
+    /// <summary>
+    /// Proper semantic version comparison.
+    /// Unlike string.Compare, this correctly handles v1.10.0 > v1.9.0.
+    /// </summary>
+    public static bool IsNewer(string remoteTag, string currentTag)
+    {
+        return ParseVersion(remoteTag) > ParseVersion(currentTag);
+    }
+
+    private static Version ParseVersion(string tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag))
+        {
+            return new Version(0, 0, 0);
+        }
+
+        string cleaned = tag.Trim().TrimStart('v', 'V');
+
+        if (Version.TryParse(cleaned, out Version result))
+        {
+            // Normalize missing parts (e.g. "1.0" -> 1.0.0)
+            return new Version(
+                Math.Max(result.Major, 0),
+                Math.Max(result.Minor, 0),
+                Math.Max(result.Build, 0));
+        }
+
+        // Fallback for tags like "1.0-beta"
+        Match match = Regex.Match(cleaned, @"^(\d+)(?:\.(\d+))?(?:\.(\d+))?");
+
+        if (match.Success)
+        {
+            int major = int.Parse(match.Groups[1].Value);
+            int minor = match.Groups[2].Success ? int.Parse(match.Groups[2].Value) : 0;
+            int patch = match.Groups[3].Success ? int.Parse(match.Groups[3].Value) : 0;
+            return new Version(major, minor, patch);
+        }
+
+        return new Version(0, 0, 0);
     }
 }

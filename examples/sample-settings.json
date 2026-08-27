@@ -6,6 +6,7 @@
       "RadioDisableDepth": 10.0,
       "DisableRadioInTunnels": true,
       "DisableRadioInWater": true,
+	  "AutoCheckForUpdatesOnStartup": true,
       "OpenMenuKey": "F3"
     },
     "Loudness": {
