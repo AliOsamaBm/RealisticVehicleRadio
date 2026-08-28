@@ -24,7 +24,7 @@
 - [Documentation & Guides](#-documentation--guides)
 - [Building from Source](#-building-from-source)
 - [Contributing](#-contributing)
-- [License & Credits](#-license--credits)
+- [License](#-license--credits)
 - [Support](#-support)
 
 ---
