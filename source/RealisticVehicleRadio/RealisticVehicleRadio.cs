@@ -51,6 +51,10 @@ public sealed class RealisticVehicleRadio : Script
     private readonly HashSet<int> _touchedRadioEnabled = new HashSet<int>();
     private readonly HashSet<int> _touchedLoud = new HashSet<int>();
 
+    // Clean up per tick
+    private readonly HashSet<int> _activeHandles = new HashSet<int>();
+    private readonly List<int> _removalBuffer = new List<int>();
+
     // ==========================================
     // CACHED CONFIGURATION INSTANCES
     // ==========================================
@@ -310,7 +314,7 @@ public sealed class RealisticVehicleRadio : Script
 
             // Determine how many vehicles to process based on the limit setting
             _cachedProcessLimit = _mainCfg.MaxProcessVehicles > 0 ? Math.Min(_cachedVehicles.Length, _mainCfg.MaxProcessVehicles) : _cachedVehicles.Length;
-            HashSet<int> activeHandles = new HashSet<int>();
+            _activeHandles.Clear();
 
             for (int i = 0; i < _cachedProcessLimit; i++)
             {
@@ -320,14 +324,35 @@ public sealed class RealisticVehicleRadio : Script
                     continue;
                 }
 
-                // Radio is off already by default when engine is not running, so no need to procced further
+                int handle = vehicle.Handle;
+
+                /*
+                   Fixed in V1.2.2: Vehicle enters tunnel -> Engine off -> Somehow without turning the engine 
+                   back on, the vehicle got outside tunnel -> Bug: its radio will be disabled.
+                
+                   Radio is off already by default when engine is not running, so no need to procced further.
+                   Restore its default state if we previously modified it.
+                */
                 if (!vehicle.IsEngineRunning)
                 {
+                    if (_vehicleRadioEnabledStates.TryGetValue(handle, out bool lastEnabled) && !lastEnabled)
+                    {
+                        Function.Call(Hash.SET_VEHICLE_RADIO_ENABLED, handle, true);
+                        _vehicleRadioEnabledStates.Remove(handle);
+                        _touchedRadioEnabled.Remove(handle);
+                    }
+
+                    if (_vehicleStates.TryGetValue(handle, out VehicleRadioState vstate) && vstate.LoudApplied)
+                    {
+                        Function.Call(Hash.SET_VEHICLE_RADIO_LOUD, handle, false);
+                        _vehicleStates.Remove(handle);
+                        _touchedLoud.Remove(handle);
+                    }
+
                     continue;
                 }
 
-                int handle = vehicle.Handle;
-                activeHandles.Add(handle);
+                _activeHandles.Add(handle);
                 bool isVehicleWithNoRadio = false;
                 for (int x = 0; x < _exclusionsCfg.VehiclesWithNoRadio.Length; x++)
                 {
@@ -597,31 +622,33 @@ public sealed class RealisticVehicleRadio : Script
             // ==========================================
 
             // Clean up _vehicleStates
-            List<int> toRemoveStates = new List<int>();
+            _removalBuffer.Clear();
+
             foreach (var kv in _vehicleStates)
             {
-                if (!activeHandles.Contains(kv.Key))
+                if (!_activeHandles.Contains(kv.Key))
                 {
-                    toRemoveStates.Add(kv.Key);
+                    _removalBuffer.Add(kv.Key);
                 }
             }
-            for (int i = 0; i < toRemoveStates.Count; i++)
+            for (int i = 0; i < _removalBuffer.Count; i++)
             {
-                _vehicleStates.Remove(toRemoveStates[i]);
+                _vehicleStates.Remove(_removalBuffer[i]);
             }
 
             // Clean up _vehicleRadioEnabledStates (Tunnel/Water combined)
-            List<int> toRemoveRadio = new List<int>();
+            _removalBuffer.Clear();
+
             foreach (var kv in _vehicleRadioEnabledStates)
             {
-                if (!activeHandles.Contains(kv.Key))
+                if (!_activeHandles.Contains(kv.Key))
                 {
-                    toRemoveRadio.Add(kv.Key);
+                    _removalBuffer.Add(kv.Key);
                 }
             }
-            for (int i = 0; i < toRemoveRadio.Count; i++)
+            for (int i = 0; i < _removalBuffer.Count; i++)
             {
-                _vehicleRadioEnabledStates.Remove(toRemoveRadio[i]);
+                _vehicleRadioEnabledStates.Remove(_removalBuffer[i]);
             }
         }
     }

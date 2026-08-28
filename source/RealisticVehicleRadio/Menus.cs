@@ -652,6 +652,15 @@ saveAction: () =>
 
         _exclusionsSettingsMenu.Opening += (s, e) =>
         {
+            /* 
+               Fixed in V1.2.2
+               Only sync the checkboxes with the live config.
+               DO NOT clear/rebuild pendingVehicles here, or it will wipe out 
+               staged changes when the user navigates back from the submenu!
+               As the pendingVehicles list is already correctly initialized when
+               the script first loads, and it is correctly updated by the Add/Remove buttons.
+            */
+
             disableRadioForMotorcycles.Checked = exclusionsCfg.DisableRadioForMotorcycles;
             disableRadioForPlanes.Checked = exclusionsCfg.DisableRadioForPlanes;
             disableRadioForAircraft.Checked = exclusionsCfg.DisableRadioForAircraft;
@@ -662,10 +671,6 @@ saveAction: () =>
             disableRadioForSubmarineCars.Checked = exclusionsCfg.DisableRadioForSubmarineCars;
             disableRadioForRegularQuadBikes.Checked = exclusionsCfg.DisableRadioForRegularQuadBikes;
             disableRadioForMilitaryVehicles.Checked = exclusionsCfg.DisableRadioForMilitaryVehicles;
-
-            pendingVehicles.Clear();
-            pendingVehicles.AddRange(exclusionsCfg.VehiclesWithNoRadio);
-            BuildVehicleList();
         };
 
         _realisticVehicleRadioSettingsMenu.AddSubMenu(_exclusionsSettingsMenu, "").Title = "Excluded Vehicles";

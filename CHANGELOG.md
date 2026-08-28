@@ -1,3 +1,13 @@
+## [v1.2.2] - Slight Cleanup Optimization & Menu Bug Fix
+
+### Improved
+* Cleanup logic now reuses an existing collection instead of allocating a new collection on every logic tick, reducing unnecessary garbage collection overhead.
+
+### Fixed
+* Vehicle radio state could remain disabled after a vehicle entered a tunnel, had its engine turned off, and then left the tunnel without restarting the engine. The radio state is now correctly restored when the engine is off.
+* Vehicle exclusion menu, the pending vehicle list remains correctly initialized on startup and continues to be updated by the Add/Remove buttons.
+
+---
 ## [v1.2.1] - Logic Bug Fixes in Loudness & Weather
 
 ### Fixed
@@ -12,7 +22,7 @@
 ### Added
 * Automatic GitHub-based update checker to notify you when a new version is available.
 
-### Improved
+
 * "Reset to Defaults" and "Save Changes" buttons now behave correctly — resetting only stages the changes in the menu, and you must press Save to actually apply them to the game and JSON file.
 * Cleanup logic on script abort now properly resets the radio states of all vehicles that were processed by the script, rather than just the ones currently cached in the dictionary.
 
