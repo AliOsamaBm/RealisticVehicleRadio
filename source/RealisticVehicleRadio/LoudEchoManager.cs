@@ -646,6 +646,7 @@ namespace RealisticVehicleRadio
             Vector3 spawnPosition = originalVehicle.Position + new Vector3(0.0f, 0.0f, 2.0f);
 
             Vehicle ghostVehicle = Vehicle.Create(originalVehicle.Model, spawnPosition);
+            // Use Vehicle ghostVehicle = World.CreateVehicle(originalVehicle.Model, spawnPosition); for SHVDNE
 
             if (!ValidFunctions.IsValidVehicle(ghostVehicle))
             {
