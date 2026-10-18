@@ -67,3 +67,15 @@ You can disable keys in two ways:
 3. Replace its value with `"None"`.
 4. See [this guide](guides/controls-and-hotkeys.md) for more detailed information about hotkeys.
 ---
+
+## 🚗 Why does the radio stop playing when I exit my vehicle?
+
+This is commonly caused by the vehicle's engine turning off when you exit. To keep the radio playing, use a mod that keeps the engine running after you leave the vehicle. I recommend [IV Style Exit Vehicle .NET (Optimized)](https://www.gta5-mods.com/scripts/iv-style-exit-vehicle-net-optimized). This solution has been confirmed to work with Realistic Vehicle Radio.
+
+---
+
+## 📻 Why do other vehicles' radios become audible when I turn off my own vehicle's radio? Why aren't they audible when my radio is on?
+
+This is a behavior of GTA V's vanilla audio engine, not a bug caused by this script mod. The game appears to suppress the audio from other vehicles' radios while your own vehicle's radio is playing. Turning off your radio allows the other vehicles' radios to become audible again. Unfortunately, this behavior is controlled by the game's audio engine, and I have not found a way to override it.
+
+---

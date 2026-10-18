@@ -1,20 +1,29 @@
 {
   "RealisticVehicleRadio": {
     "Main": {
+      "RadioDisableDepth": 10.0,
+      "MuteRadioInTunnels": true,
+      "EnableStaticRadioInTunnels": true,
+      "DisableRadioInWater": true,
+      "AutoCheckForUpdatesOnStartup": true,
+      "OpenMenuKey": "F3"
+    },
+    "Performance": {
       "VehiclesSearchDistance": 50.0,
       "MaxProcessVehicles": 30,
-      "RadioDisableDepth": 10.0,
-      "DisableRadioInTunnels": true,
-      "DisableRadioInWater": true,
-	  "AutoCheckForUpdatesOnStartup": true,
-      "OpenMenuKey": "F3"
+      "LogicUpdateIntervalMs": 100,
+      "ScanIntervalMs": 250,
+      "MaxCachedVehicles": 48,
+      "MaxProcessDistance": 60.0,
+      "RemoveDistance": 100.0
     },
     "Loudness": {
       "EnableRoofCheck": true,
       "EnableWindowCheck": true,
       "EnableDoorCheck": true,
       "EnableRandomChance": true,
-      "RandomLoudRadioChancePercentage": 50
+      "RandomLoudRadioChancePercentage": 50,
+      "LoudEchoVehicleCount": 0
     },
     "TunnelDetection": {
       "TunnelHorizontalTolerance": 0.2,
@@ -40,12 +49,20 @@
     },
     "Thunderstorm": {
       "EnableThunderstormInterference": true,
+      "EnableThunderstormStatic": true,
+      "EnableStaticPop": true,
       "InitialInterferenceDelayMin": 5.0,
       "InitialInterferenceDelayMax": 15.0,
       "InterferenceDurationMin": 0.5,
       "InterferenceDurationMax": 2.5,
       "NextInterferenceDelayMin": 10.0,
-      "NextInterferenceDelayMax": 30.0
+      "NextInterferenceDelayMax": 30.0,
+      "StaticSignalMin": 0.4,
+      "StaticSignalMax": 0.8,
+      "StaticDriftSpeed": 0.6,
+      "StaticHissIntensity": 0.15,
+      "StaticPopChancePercentage": 8,
+      "StaticPopMaxIntensity": 0.35
     }
   },
   "TunnelDebugVisualizer": {

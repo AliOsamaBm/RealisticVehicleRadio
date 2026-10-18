@@ -55,15 +55,21 @@
     <Compile Include="Configuration.cs" />
     <Compile Include="FileOperations.cs" />
     <Compile Include="Helpers.cs" />
+    <Compile Include="KeybindOverlay.cs" />
+    <Compile Include="LoudEchoManager.cs" />
+    <Compile Include="LoudnessEvaluator.cs" />
     <Compile Include="Menus.cs" />
+    <Compile Include="PlayerTunnelEffect.cs" />
     <Compile Include="RealisticVehicleRadio.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="ThunderInterference.cs" />
     <Compile Include="TunnelDebugVisualizer.cs" />
     <Compile Include="TunnelManager.cs" />
     <Compile Include="TunnelRecorder.cs" />
     <Compile Include="TunnelSaveQueue.cs" />
     <Compile Include="TunnelSpatialIndex.cs" />
     <Compile Include="UpdateChecker.cs" />
+    <Compile Include="VehicleExclusionManager.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

@@ -21,170 +21,186 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 
-using static RealisticVehicleRadio;
+using static RealisticVehicleRadio.Helpers.GUI;
 
-using GTA.UI;
-
-public static class TunnelSaveQueue
+namespace RealisticVehicleRadio
 {
-    private static readonly object _lock = new object();
-
-    private static List<Tunnel> _pendingSnapshot;
-    private static bool _saveRequested;
-    private static bool _saveRunning;
-
-    private static string _pendingMessage;
-
-    // Set to true if you want background save notifications.
-    public static bool NotifyUser { get; set; } = false;
-
-    public static void QueueSave(List<Tunnel> tunnels)
+    public static class TunnelSaveQueue
     {
-        if (tunnels == null)
-        {
-            return;
-        }
+        private static readonly object _lock = new object();
 
-        lock (_lock)
-        {
-            _pendingSnapshot = CreateSnapshot(tunnels);
-            _saveRequested = true;
-        }
-    }
+        private static List<Tunnel> _pendingSnapshot;
+        private static bool _saveRequested;
+        private static bool _saveRunning;
 
-    public static void Process()
-    {
-        // 1. Show pending background-thread messages on the script thread.
-        string message = null;
+        private static string _pendingMessage;
 
-        lock (_lock)
+        // Set to true if you want background save GUI.ShowContextualMessages.
+        public static bool NotifyUser { get; set; } = false;
+
+        public static void QueueSave(List<Tunnel> tunnels)
         {
-            if (_pendingMessage != null)
+            if (tunnels == null)
             {
-                message = _pendingMessage;
-                _pendingMessage = null;
+                return;
             }
-        }
-
-        if (message != null)
-        {
-            Notification.PostTicker(message, true);
-        }
-
-        // 2. Start a new background save if one is pending and none is running.
-        List<Tunnel> snapshot = null;
-        bool startSave = false;
-
-        lock (_lock)
-        {
-            if (_saveRequested && !_saveRunning)
-            {
-                startSave = true;
-                _saveRunning = true;
-                _saveRequested = false;
-
-                snapshot = _pendingSnapshot;
-                _pendingSnapshot = null;
-            }
-        }
-
-        if (!startSave)
-        {
-            return;
-        }
-
-        Task.Run(() =>
-        {
-            try
-            {
-                // IMPORTANT:
-                // This must be a thread-safe save method.
-                // It must not call GTA natives, Notification, Screen, Function.Call, etc.
-                FileOperations.SaveTunnels(snapshot);
-
-                if (NotifyUser)
-                {
-                    lock (_lock)
-                    {
-                        _pendingMessage = "~g~Tunnel file saved.";
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                lock (_lock)
-                {
-                    _pendingMessage = $"~r~Tunnel save failed: {ex.Message}";
-                }
-            }
-            finally
-            {
-                lock (_lock)
-                {
-                    _saveRunning = false;
-                }
-            }
-        });
-    }
-
-    private static List<Tunnel> CreateSnapshot(List<Tunnel> tunnels)
-    {
-        List<Tunnel> copy = new List<Tunnel>(tunnels.Count);
-
-        for (int i = 0; i < tunnels.Count; i++)
-        {
-            Tunnel tunnel = tunnels[i];
-
-            copy.Add(new Tunnel
-            {
-                Id = tunnel.Id,
-                Name = tunnel.Name,
-                Points = tunnel.Points == null
-                    ? new List<TunnelPoint>()
-                    : new List<TunnelPoint>(tunnel.Points)
-            });
-        }
-
-        return copy;
-    }
-
-    public static void FlushBlocking(int timeoutMs = 3000)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-
-        while (DateTime.UtcNow < deadline)
-        {
-            List<Tunnel> snapshot = null;
 
             lock (_lock)
             {
-                if (!_saveRunning && !_saveRequested)
-                {
-                    return;
-                }
+                _pendingSnapshot = CreateSnapshot(tunnels);
+                _saveRequested = true;
+            }
+        }
 
-                if (!_saveRunning && _saveRequested)
+        public static void Process()
+        {
+            ShowPendingMessage();
+            StartPendingSaveIfReady();
+        }
+
+        private static void ShowPendingMessage()
+        {
+            string message = null;
+
+            lock (_lock)
+            {
+                if (_pendingMessage != null)
                 {
-                    snapshot = _pendingSnapshot;
-                    _pendingSnapshot = null;
-                    _saveRequested = false;
+                    message = _pendingMessage;
+                    _pendingMessage = null;
                 }
             }
 
-            if (snapshot != null)
+            if (message != null)
+            {
+                ShowContextualMessage(message);
+            }
+        }
+
+        private static void StartPendingSaveIfReady()
+        {
+            List<Tunnel> snapshot = null;
+            bool startSave = false;
+
+            lock (_lock)
+            {
+                if (_saveRequested && !_saveRunning)
+                {
+                    startSave = true;
+                    _saveRunning = true;
+                    _saveRequested = false;
+                    snapshot = _pendingSnapshot;
+                    _pendingSnapshot = null;
+                }
+            }
+
+            if (!startSave)
+            {
+                return;
+            }
+
+            Task.Run(async () =>
             {
                 try
                 {
-                    FileOperations.SaveTunnels(snapshot);
+                    await FileOperations.SaveTunnelsAsync(snapshot);
+                    if (NotifyUser)
+                    {
+                        lock (_lock)
+                        {
+                            _pendingMessage = "~g~Tunnel file saved.";
+                        }
+                    }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Ignore during shutdown.
+                    lock (_lock)
+                    {
+                        _pendingMessage = $"~r~Tunnel save failed: {ex.Message}";
+                    }
+                }
+                finally
+                {
+                    lock (_lock)
+                    {
+                        _saveRunning = false;
+                    }
+                }
+            });
+        }
+
+        private static List<Tunnel> CreateSnapshot(List<Tunnel> tunnels)
+        {
+            List<Tunnel> copy = new List<Tunnel>(tunnels.Count);
+
+            for (int i = 0; i < tunnels.Count; i++)
+            {
+                Tunnel tunnel = tunnels[i];
+
+                copy.Add(new Tunnel
+                {
+                    Id = tunnel.Id,
+                    Name = tunnel.Name,
+                    Points = tunnel.Points == null
+                        ? new List<TunnelPoint>()
+                        : new List<TunnelPoint>(tunnel.Points)
+                });
+            }
+
+            return copy;
+        }
+
+        public static void FlushBlocking(int timeoutMs = 3000)
+        {
+            DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+
+            while (DateTime.UtcNow < deadline)
+            {
+                List<Tunnel> snapshot = TryDequeuePendingSave();
+
+                if (snapshot == null && !IsSaveActive())
+                {
+                    return; // Nothing pending, nothing running
+                }
+
+                if (snapshot != null)
+                {
+                    try
+                    {
+                        FileOperations.SaveTunnelsAsync(snapshot).GetAwaiter().GetResult();
+                    }
+                    catch
+                    {
+                        // Ignore during shutdown.
+                    }
+                }
+                else
+                {
+                    Thread.Sleep(1);
                 }
             }
-            else
+        }
+
+        private static List<Tunnel> TryDequeuePendingSave()
+        {
+            lock (_lock)
             {
-                Thread.Sleep(1);
+                if (!_saveRunning && _saveRequested)
+                {
+                    var snapshot = _pendingSnapshot;
+                    _pendingSnapshot = null;
+                    _saveRequested = false;
+                    return snapshot;
+                }
+                return null;
+            }
+        }
+
+        private static bool IsSaveActive()
+        {
+            lock (_lock)
+            {
+                return _saveRunning || _saveRequested;
             }
         }
     }

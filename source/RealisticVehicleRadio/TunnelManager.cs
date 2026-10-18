@@ -16,77 +16,196 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Collections.Generic;
 
-using static RealisticVehicleRadio;
+using static RealisticVehicleRadio.Helpers.GUI;
 
-using GTA.UI;
-
-public class Tunnel
+namespace RealisticVehicleRadio
 {
-    public int Id { get; set; }
-    public string Name { get; set; }
-    public List<TunnelPoint> Points { get; set; } = new List<TunnelPoint>();
-}
-
-public static class TunnelManager
-{
-    public static List<Tunnel> Tunnels { get; private set; } = new List<Tunnel>();
-    private static int _nextId = 1;
-
-    public static void Load()
+    public class Tunnel
     {
-        Tunnels = FileOperations.LoadTunnels();
+        public int Id { get; set; }
+        public string Name { get; set; }
+        public List<TunnelPoint> Points { get; set; } = new List<TunnelPoint>();
+    }
 
-        if (Tunnels != null && Tunnels.Any())
+    public static class TunnelManager
+    {
+        public static List<Tunnel> Tunnels { get; private set; } = new List<Tunnel>();
+        // New in V1.3.0: O(1) lookup by tunnel Id
+        private static readonly Dictionary<int, Tunnel> _tunnelsById = new Dictionary<int, Tunnel>();
+        private static int _nextId = 1;
+        public static event Action TunnelsChanged;
+
+        // New in V1.3.0
+        private static void RaiseTunnelsChanged()
         {
-            _nextId = Tunnels.Max(t => t.Id) + 1;
+            TunnelsChanged?.Invoke();
         }
 
-        TunnelSpatialIndex.MarkDirty();
-    }
-
-    public static void AddTunnel(TunnelPoint[] points, string customName = null)
-    {
-        int newId = _nextId++;
-
-        string finalName = string.IsNullOrWhiteSpace(customName)
-            ? $"Tunnel {newId}"
-            : customName;
-
-        Tunnel newTunnel = new Tunnel
+        /// <summary>
+        /// Fast lookup. Returns null if the tunnel does not exist.
+        /// </summary>
+        public static Tunnel GetTunnelById(int id)
         {
-            Id = newId,
-            Name = finalName,
-            Points = points.ToList()
-        };
+            return _tunnelsById.TryGetValue(id, out Tunnel t) ? t : null;
+        }
 
-        Tunnels.Add(newTunnel);
+        private static void RebuildLookup()
+        {
+            _tunnelsById.Clear();
+            for (int i = 0; i < Tunnels.Count; i++)
+            {
+                Tunnel t = Tunnels[i];
+                if (t != null)
+                {
+                    _tunnelsById[t.Id] = t;
+                }
+            }
+        }
 
-        TunnelSpatialIndex.MarkDirty();
+        public static async Task LoadAsync()
+        {
+            List<Tunnel> loadedTunnels = await FileOperations.LoadTunnelsAsync();
+            Tunnels = new List<Tunnel>();
 
-        Save();
+            if (loadedTunnels != null)
+            {
+                HashSet<int> seenIds = new HashSet<int>();
+                int maxId = 0;
 
-        Notification.PostTicker($"~g~Saved '{finalName}' (#{newId}, {points.Length} pts)", true);
-    }
+                foreach (Tunnel tunnel in loadedTunnels)
+                {
+                    if (tunnel == null)
+                    {
+                        continue;
+                    }
 
-    public static void DeleteTunnel(int id)
-    {
-        Tunnel tunnel = Tunnels.FirstOrDefault(t => t.Id == id);
-        string displayName = tunnel != null ? tunnel.Name : $"#{id}";
+                    if (tunnel.Points == null)
+                    {
+                        tunnel.Points = new List<TunnelPoint>();
+                    }
 
-        Tunnels.RemoveAll(t => t.Id == id);
+                    // A tunnel needs at least 2 points to form a segment
+                    if (tunnel.Points.Count < 2)
+                    {
+                        continue;
+                    }
 
-        TunnelSpatialIndex.MarkDirty();
+                    if (tunnel.Name == null)
+                    {
+                        tunnel.Name = $"Tunnel {tunnel.Id}";
+                    }
 
-        Save();
+                    // Handle duplicate IDs by assigning a high temporary ID
+                    if (!seenIds.Add(tunnel.Id))
+                    {
+                        tunnel.Id = maxId + 1000 + seenIds.Count;
+                    }
 
-        Notification.PostTicker($"~r~Deleted Tunnel: {displayName}", true);
-    }
+                    Tunnels.Add(tunnel);
+                    if (tunnel.Id > maxId)
+                    {
+                        maxId = tunnel.Id;
+                    }
+                }
 
-    public static void Save()
-    {
-        TunnelSaveQueue.QueueSave(Tunnels);
+                _nextId = maxId + 1;
+
+                // Fix any temporary duplicate IDs to be sequential
+                foreach (Tunnel tunnel in Tunnels)
+                {
+                    if (tunnel.Id >= maxId + 1000)
+                    {
+                        tunnel.Id = _nextId++;
+                    }
+                }
+            }
+            else
+            {
+                _nextId = 1;
+            }
+
+            RebuildLookup(); // sync
+            TunnelSpatialIndex.MarkDirty();
+        }
+
+        public static void AddTunnel(TunnelPoint[] points, string customName = null)
+        {
+            int newId = _nextId++;
+
+            string finalName = string.IsNullOrWhiteSpace(customName)
+                ? $"Tunnel {newId}"
+                : customName;
+
+            Tunnel newTunnel = new Tunnel
+            {
+                Id = newId,
+                Name = finalName,
+                Points = points.ToList()
+            };
+
+            Tunnels.Add(newTunnel);
+
+            _tunnelsById[newTunnel.Id] = newTunnel; // sync
+
+            TunnelSpatialIndex.MarkDirty();
+
+            Save();
+
+            ShowContextualMessage($"~g~Saved '{finalName}' (#{newId}, {points.Length} pts)");
+
+            RaiseTunnelsChanged();
+        }
+
+        public static void DeleteTunnel(int id)
+        {
+            Tunnel tunnel = GetTunnelById(id);
+            if (tunnel == null)
+            {
+                ShowContextualMessage($"~r~Tunnel #{id} was not found.");
+                return;
+            }
+
+            string displayName = tunnel != null ? tunnel.Name : $"#{id}";
+
+            Tunnels.RemoveAll(t => t.Id == id);
+            _tunnelsById.Remove(id); // sync
+
+            TunnelSpatialIndex.MarkDirty();
+
+            Save();
+
+            ShowContextualMessage($"~r~Deleted Tunnel: {displayName}");
+
+            RaiseTunnelsChanged();
+        }
+
+        /// <summary>
+        /// Updates the name of a tunnel and saves the changes to disk.
+        /// </summary>
+        public static void RenameTunnel(int id, string newName)
+        {
+            Tunnel tunnel = GetTunnelById(id);
+            if (tunnel == null)
+            {
+                ShowContextualMessage($"~r~Tunnel #{id} was not found.");
+                return;
+            }
+
+            tunnel.Name = newName;
+
+            // Call your existing save method to write the new name to the JSON file
+            Save();
+            RaiseTunnelsChanged();
+        }
+
+        public static void Save()
+        {
+            TunnelSaveQueue.QueueSave(Tunnels);
+        }
     }
 }

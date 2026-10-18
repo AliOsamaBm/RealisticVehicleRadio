@@ -23,142 +23,140 @@ using System.Threading.Tasks;
 using System.Text.RegularExpressions;
 
 using Newtonsoft.Json.Linq;
+using static RealisticVehicleRadio.Helpers;
 
-using static Helpers;
-
-using GTA.UI;
-
-public static class UpdateChecker
+namespace RealisticVehicleRadio
 {
-    public const string CurrentScriptVersion = "v1.2.2";
-
-    private const string _GITHUB_OWNER = "AliOsamaBm";
-    private const string _GITHUB_REPO = "RealisticVehicleRadio";
-
-    private const string _GITHUB_API_URL =
-        "https://api.github.com/repos/" + _GITHUB_OWNER + "/" + _GITHUB_REPO + "/releases/latest";
-
-    // =====================================================================
-    // FIX: Force TLS 1.2 for .NET Framework 4.8
-    // =====================================================================
-    static UpdateChecker()
+    public static class UpdateChecker
     {
-        /*
-           GitHub API requires TLS 1.2. Older .NET Framework versions default to TLS 1.0/1.1 
-           which causes the "Could not create SSL/TLS secure channel" error.
-        */
-        ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls;
-    }
+        public const string CURRENT_SCRIPT_VERSION = "v1.3.0";
 
-    // =====================================================================
-    // A single shared HttpClient (avoids socket exhaustion)
-    // =====================================================================
-    private static readonly HttpClient _client = CreateClient();
+        private const string _GITHUB_OWNER = "AliOsamaBm";
+        private const string _GITHUB_REPO = "RealisticVehicleRadio";
 
-    private static HttpClient CreateClient()
-    {
-        HttpClient client = new HttpClient
+        private const string _GITHUB_API_URL =
+            "https://api.github.com/repos/" + _GITHUB_OWNER + "/" + _GITHUB_REPO + "/releases/latest";
+
+        // =====================================================================
+        // FIX: Force TLS 1.2 for .NET Framework 4.8
+        // =====================================================================
+        static UpdateChecker()
         {
-            Timeout = TimeSpan.FromSeconds(15)
-        };
+            /*
+            GitHub API requires TLS 1.2. Older .NET Framework versions default to TLS 1.0/1.1 
+            which causes the "Could not create SSL/TLS secure channel" error.
+            */
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls;
+        }
 
-        // GitHub API REQUIRES a User-Agent header, otherwise it returns 403.
-        client.DefaultRequestHeaders.Add("User-Agent", "RealisticVehicleRadio-UpdateChecker/1.0");
-        client.DefaultRequestHeaders.Add("Accept", "application/vnd.github+json");
+        // =====================================================================
+        // A single shared HttpClient (avoids socket exhaustion)
+        // =====================================================================
+        private static readonly HttpClient _client = CreateClient();
 
-        return client;
-    }
-
-    public static async Task CheckForUpdatesAsync()
-    {
-        try
+        private static HttpClient CreateClient()
         {
-            using (HttpResponseMessage response = await _client.GetAsync(_GITHUB_API_URL))
+            HttpClient client = new HttpClient
             {
-                // 404 = the repository exists, but no Release has been published yet.
-                if (response.StatusCode == HttpStatusCode.NotFound)
+                Timeout = TimeSpan.FromSeconds(15)
+            };
+
+            // GitHub API REQUIRES a User-Agent header, otherwise it returns 403.
+            client.DefaultRequestHeaders.Add("User-Agent", "RealisticVehicleRadio-UpdateChecker/1.0");
+            client.DefaultRequestHeaders.Add("Accept", "application/vnd.github+json");
+
+            return client;
+        }
+
+        public static async Task CheckForUpdatesAsync()
+        {
+            try
+            {
+                using (HttpResponseMessage response = await _client.GetAsync(_GITHUB_API_URL))
                 {
-                    Notification.PostTicker("~o~[Realistic Vehicle Radio] Update Check: No releases published on GitHub yet.", true);
-                    return;
-                }
+                    // 404 = the repository exists, but no Release has been published yet.
+                    if (response.StatusCode == HttpStatusCode.NotFound)
+                    {
+                        GUI.ShowContextualMessage("~o~[Realistic Vehicle Radio] Update Check: No releases published on GitHub yet.");
+                        return;
+                    }
 
-                response.EnsureSuccessStatusCode();
+                    response.EnsureSuccessStatusCode();
 
-                string json = await response.Content.ReadAsStringAsync();
-                JObject release = JObject.Parse(json);
+                    string json = await response.Content.ReadAsStringAsync();
+                    JObject release = JObject.Parse(json);
 
-                string remoteTag = release["tag_name"]?.ToString();
+                    string remoteTag = release["tag_name"]?.ToString();
 
-                if (string.IsNullOrWhiteSpace(remoteTag))
-                {
-                    Notification.PostTicker("~o~[Realistic Vehicle Radio] Update Check: Could not parse version.", true);
-                    return;
-                }
+                    if (string.IsNullOrWhiteSpace(remoteTag))
+                    {
+                        GUI.ShowContextualMessage("~o~[Realistic Vehicle Radio] Update Check: Could not parse version.");
+                        return;
+                    }
 
-                if (IsNewer(remoteTag, CurrentScriptVersion))
-                {
-                    Notification.PostTicker(
-                        $"~g~[Realistic Vehicle Radio] Update Available! ~w~{remoteTag}~n~~b~Download from the GitHub Releases page",
-                        true);
-                }
-                else
-                {
-                    Notification.PostTicker($"~g~[Realistic Vehicle Radio] Up to date. Version: {CurrentScriptVersion}", true);
+                    if (IsNewer(remoteTag, CURRENT_SCRIPT_VERSION))
+                    {
+                        GUI.ShowContextualMessage($"~g~[Realistic Vehicle Radio] Update Available! ~w~{remoteTag}~n~~b~Download from the GitHub Releases page");
+                    }
+                    else
+                    {
+                        GUI.ShowContextualMessage($"~g~[Realistic Vehicle Radio] Up to date. Version: {CURRENT_SCRIPT_VERSION}");
+                    }
                 }
             }
+            catch (HttpRequestException httpEx)
+            {
+                Logger.DisplayAndLogError(httpEx, "~o~[Realistic Vehicle Radio] Update Check: Network error.");
+            }
+            catch (TaskCanceledException tcEx) // Timeout
+            {
+                Logger.DisplayAndLogError(tcEx, "~o~[Realistic Vehicle Radio] Update Check: Timed out.");
+            }
+            catch (Exception ex)
+            {
+                Logger.DisplayAndLogError(ex, "~o~[Realistic Vehicle Radio] Update Check: An error occurred.");
+            }
         }
-        catch (HttpRequestException httpEx)
-        {
-            Logger.DisplayAndLogError(httpEx, "~o~[Realistic Vehicle Radio] Update Check: Network error.");
-        }
-        catch (TaskCanceledException tcEx) // Timeout
-        {
-            Logger.DisplayAndLogError(tcEx, "~o~[Realistic Vehicle Radio] Update Check: Timed out.");
-        }
-        catch (Exception ex)
-        {
-            Logger.DisplayAndLogError(ex, "~o~[Realistic Vehicle Radio] Update Check: An error occurred.");
-        }
-    }
 
-    /// <summary>
-    /// Proper semantic version comparison.
-    /// Unlike string.Compare, this correctly handles v1.10.0 > v1.9.0.
-    /// </summary>
-    public static bool IsNewer(string remoteTag, string currentTag)
-    {
-        return ParseVersion(remoteTag) > ParseVersion(currentTag);
-    }
-
-    private static Version ParseVersion(string tag)
-    {
-        if (string.IsNullOrWhiteSpace(tag))
+        /// <summary>
+        /// Proper semantic version comparison.
+        /// Unlike string.Compare, this correctly handles v1.10.0 > v1.9.0.
+        /// </summary>
+        public static bool IsNewer(string remoteTag, string currentTag)
         {
+            return ParseVersion(remoteTag) > ParseVersion(currentTag);
+        }
+
+        private static Version ParseVersion(string tag)
+        {
+            if (string.IsNullOrWhiteSpace(tag))
+            {
+                return new Version(0, 0, 0);
+            }
+
+            string cleaned = tag.Trim().TrimStart('v', 'V');
+
+            if (Version.TryParse(cleaned, out Version result))
+            {
+                // Normalize missing parts (e.g. "1.0" -> 1.0.0)
+                return new Version(
+                    Math.Max(result.Major, 0),
+                    Math.Max(result.Minor, 0),
+                    Math.Max(result.Build, 0));
+            }
+
+            // Fallback for tags like "1.0-beta"
+            Match match = Regex.Match(cleaned, @"^(\d+)(?:\.(\d+))?(?:\.(\d+))?");
+
+            if (match.Success)
+            {
+                int major = int.Parse(match.Groups[1].Value);
+                int minor = match.Groups[2].Success ? int.Parse(match.Groups[2].Value) : 0;
+                int patch = match.Groups[3].Success ? int.Parse(match.Groups[3].Value) : 0;
+                return new Version(major, minor, patch);
+            }
+
             return new Version(0, 0, 0);
         }
-
-        string cleaned = tag.Trim().TrimStart('v', 'V');
-
-        if (Version.TryParse(cleaned, out Version result))
-        {
-            // Normalize missing parts (e.g. "1.0" -> 1.0.0)
-            return new Version(
-                Math.Max(result.Major, 0),
-                Math.Max(result.Minor, 0),
-                Math.Max(result.Build, 0));
-        }
-
-        // Fallback for tags like "1.0-beta"
-        Match match = Regex.Match(cleaned, @"^(\d+)(?:\.(\d+))?(?:\.(\d+))?");
-
-        if (match.Success)
-        {
-            int major = int.Parse(match.Groups[1].Value);
-            int minor = match.Groups[2].Success ? int.Parse(match.Groups[2].Value) : 0;
-            int patch = match.Groups[3].Success ? int.Parse(match.Groups[3].Value) : 0;
-            return new Version(major, minor, patch);
-        }
-
-        return new Version(0, 0, 0);
     }
 }
